@@ -22,7 +22,7 @@ from trainer import train
 
 def get_args():
     parser = argparse.ArgumentParser(description='Domain generalization')
-    parser.add_argument('--data_dir', type=str,default="/root/Downloads/5fd37bc2531f4132b0f5aeb8610414da/datasets/")#"/mnt/ssd1/LiuSJ/")#
+    parser.add_argument('--data_dir', type=str,default="E:\wifi\WiSR")#"/mnt/ssd1/LiuSJ/")#
     parser.add_argument('--dataset', type=str, default='CSI')
     parser.add_argument('--csidataset', type=str, default='Widar3')#'Widar3'#'CSIDA',#'ARIL'
     parser.add_argument('--algorithm', type=str, default="WiSR")
@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument('--data_type', type=str, default="amp+pha")
     parser.add_argument('--source_domains', type=str, default=None)
     parser.add_argument('--target_domains', type=str, default=None)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=12)
     parser.add_argument('--backbone', type=str, default="CSIResNet")
 
     args = parser.parse_known_args()

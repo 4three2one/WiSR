@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+import os.path
 
 import torch
 from torch.utils.data import TensorDataset
@@ -32,9 +33,9 @@ class CSIIterDataset(torch.utils.data.IterableDataset):
         
 
     def get_csidataset(self, args,domain):
-        dataset_dir=args.data_dir+args.csidataset
+        dataset_dir=os.path.join(args.data_dir,args.csidataset)
         if args.csidataset=='Widar3':
-            dataset_dir=dataset_dir+"/CSI/"
+            dataset_dir = os.path.join(dataset_dir, "CSI")
             amp,pha,labels,roomid,userid,locid,oriid=get_widar_csi(dataset_dir,domain) #(n, 3, 30, 2500)
         elif args.csidataset=='CSIDA': 
             dataset_dir=dataset_dir+"/CSI_301/"

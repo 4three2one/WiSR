@@ -14,6 +14,7 @@ from evaluator import Evaluator
 from lib import misc
 from lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
 
+import sys
 
 
 def json_handler(v):
@@ -55,9 +56,11 @@ def train(target_env, args, hparams, n_steps, checkpoint_freq, logger):
 
     logger.info(f"Batch size: {batch_size} ")
 
-    
-    
-    # dataloaders
+
+    if sys.platform.startswith('win'):
+        print("当前操作系统是 Windows")
+        dataset.N_WORKERS=0
+
     train_loaders = [InfiniteDataLoader(
             dataset=env,
             weights=env_weights,

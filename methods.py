@@ -127,7 +127,7 @@ class WiSR(Algorithm):
 
     def update(self, minibatches, unlabeled=None):
         all_x = torch.cat([x for x, y in minibatches])
-        all_y = torch.cat([y for x, y in minibatches])
+        all_y = torch.cat([y.long() for x, y in minibatches])
         all_d = torch.cat([
             torch.full((x.shape[0],), i, dtype=torch.int64, device="cuda")
             for i, (x, y) in enumerate(minibatches)

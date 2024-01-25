@@ -24,7 +24,7 @@ def accuracy_from_loader(algorithm, loader, weights, debug=False):
 
         with torch.no_grad():
             logits = algorithm.predict(x)
-            loss = F.cross_entropy(logits, y).item()
+            loss = F.cross_entropy(logits, y.long()).item()
 
         B = len(x)
         losssum += loss * B

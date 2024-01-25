@@ -5,6 +5,7 @@ import re,os,pickle
 import scipy.io as scio
 import zarr
 from pathlib import Path
+import glob
 
 
 widar_gestures=["Push&Pull","Sweep","Clap","Slide","Draw-O(Horizontal)","Draw-Zigzag(Horizontal)"]
@@ -55,7 +56,11 @@ def get_widar_csi(root_dir,domain_name):#room_1_user_3_loc_2_ori_3
         rx_ids=['1','2','3','4','5','6']
     
     data_file_name='room_'+roomid+'_user_'+userid+'_ges_'+gesid+'_loc_'+locid+'_ori_'+oriid+'_rx_'+rxid+'_dealcsidata.pkl'
-    data_file=root_dir+'zero_filter_pklfile/'+'room_'+roomid+'/user_'+userid+'/'+data_file_name
+    # data_file=root_dir+'zero_filter_pklfile/'+'room_'+roomid+'/user_'+userid+'/'+data_file_name
+    save_dir=os.path.join(root_dir, "zero_filter_pklfile", 'room_' + roomid)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    data_file=os.path.join(save_dir,data_file_name)
     if not os.path.isfile(data_file):
         all_amp=[]
         all_pha=[]
@@ -66,20 +71,25 @@ def get_widar_csi(root_dir,domain_name):#room_1_user_3_loc_2_ori_3
                     for loc in loc_ids:
                         for ori in ori_ids:
                             for rx in rx_ids:
-                                mat_file_name='room_'+room+'_user_'+user+'_ges_'+ges+'_loc_'+loc+'_ori_'+ori+'_rx_'+rx+'_csi.mat'
-                                mat_file=root_dir+'matfile/'+mat_file_name
-                                #room_1_user_1_ges_Clap_loc_1_ori_1_rx_1_csi.mat
-                                if os.path.isfile(mat_file):
-                                    mat= scio.loadmat(mat_file)
-                                    print('处理：',mat_file)
-                                    mat_datas=list(mat.values())[-1][0] 
-                                    for csi_data in mat_datas:
-                                        amp,pha=deal_CSI(csi_data,IFfilter=True, IFphasani=True,padding_length=2500)
-                                        all_amp.append(amp)
-                                        all_pha.append(pha)
-                                        all_label.append(ges_ids.index(ges))
-                                else:
-                                    raise ValueError('缺少mat:',mat_file)
+                                mat_file_name_pattern='room_'+room+'_user_'+user+'_ges_'+ges+'_loc_'+loc+'_ori_'+ori+'_rx_'+rx+'*_csi.mat'
+                                # mat_file=root_dir+'matfile/'+mat_file_name
+                                mat_files=glob.glob(os.path.join(root_dir,"matfile",mat_file_name_pattern))
+
+                                for mat_file in mat_files:
+                                    #room_1_user_1_ges_Clap_loc_1_ori_1_rx_1_csi.mat
+                                    if os.path.isfile(mat_file):
+                                        mat= scio.loadmat(mat_file)
+                                        print('处理：',mat_file)
+                                        # mat_datas=list(mat.values())[-1][0]
+                                        mat_datas=list(mat.values())[-1].reshape(-1, 30, 3).transpose(-1, 1, 0)
+                                        mat_datas=mat_datas[np.newaxis,:]
+                                        for csi_data in mat_datas:
+                                            amp,pha=deal_CSI(csi_data,IFfilter=True, IFphasani=True,padding_length=2500)
+                                            all_amp.append(amp)
+                                            all_pha.append(pha)
+                                            all_label.append(ges_ids.index(ges))
+                                    else:
+                                        raise ValueError('缺少mat:',mat_file)
         all_amp=np.array(all_amp)
         all_pha=np.array(all_pha)
         all_label=np.array(all_label)
