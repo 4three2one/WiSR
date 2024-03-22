@@ -17,14 +17,21 @@ def get_dataset(args, hparams):
         in_type="train"
         #set_transfroms(env, in_type, hparams, algorithm_class)
         weights = None
-        train_splits.append((env, weights))
+        if len(test_dataset)==0:
+            train_size = int(0.8 * len(env))
+            test_size = len(env) - train_size
+            train_env, test_env = torch.utils.data.random_split(env, [train_size, test_size])
+            train_splits.append((train_env, weights))
+            test_splits.append((test_env, weights))
+
+        else:
+            train_splits.append((env, weights))
     for env in test_dataset:
         env=shuffle_dataset(env,args.seed)
         out_type = "test"
         #set_transfroms(env, out_type, hparams, algorithm_class)
         weights = None
         test_splits.append((env, weights))
-
 
     return dataset, train_splits, test_splits
 

@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 
 from datasets import get_dataset
-from methods import WiSR
+from methods import WiSR,WiSR_Indomain
 from evaluator import Evaluator
 from lib import misc
 from lib.fast_data_loader import InfiniteDataLoader, FastDataLoader
@@ -94,12 +94,22 @@ def train(target_env, args, hparams, n_steps, checkpoint_freq, logger):
     #######################################################
     # setup algorithm (model)
     #######################################################
-    algorithm = WiSR(
-        dataset.input_shape,
-        dataset.num_classes,
-        len(train_dataset),
-        hparams,
-    )
+    if len(args.target_domains)==0:
+        algorithm = WiSR_Indomain(
+            dataset.input_shape,
+            dataset.num_classes,
+            len(train_dataset),
+            hparams,
+            "ori"
+        )
+    else:
+        algorithm = WiSR(
+            dataset.input_shape,
+            dataset.num_classes,
+            len(train_dataset),
+            hparams,
+            "my"
+        )
 
     algorithm.to(device)
 

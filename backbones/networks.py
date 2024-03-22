@@ -53,3 +53,16 @@ def Classifier(in_features, out_features, is_nonlinear=False):
     else:
         return torch.nn.Linear(in_features, out_features)
 
+
+from .own_Configs import Config as Configs
+from  .CSITransNet import base_Model
+def OurFeaturizer():
+    configs = Configs()
+    model = base_Model(configs, False)
+    return model
+
+if __name__ == '__main__':
+    # x=torch.randn(2,180,500)
+    # model=Featurizer((180,500),None)
+    # y=model(x)
+    pass

@@ -4,7 +4,7 @@ import argparse
 import random
 import sys
 import re
-
+import itertools
 import numpy as np
 import PIL
 import torch
@@ -22,7 +22,12 @@ from trainer import train
 
 def get_args():
     parser = argparse.ArgumentParser(description='Domain generalization')
-    parser.add_argument('--data_dir', type=str,default="E:\wifi\WiSR")#"/mnt/ssd1/LiuSJ/")#
+    if sys.platform.startswith('win'):
+        print("")
+        parser.add_argument('--data_dir', type=str, default=r"E:\wifi\WiSR")  # "/mnt/ssd1/LiuSJ/")#
+    else:
+        parser.add_argument('--data_dir', type=str, default="/mnt/xjw/wifi/WiSR")  # "/mnt/ssd1/LiuSJ/")#
+
     parser.add_argument('--dataset', type=str, default='CSI')
     parser.add_argument('--csidataset', type=str, default='Widar3')#'Widar3'#'CSIDA',#'ARIL'
     parser.add_argument('--algorithm', type=str, default="WiSR")
@@ -33,15 +38,19 @@ def get_args():
     parser.add_argument('--results_file', type=str, default="test_results.txt")
     parser.add_argument("--evalmode",default="fast",help="[fast, all]. if fast, ignore train_in datasets in evaluation time.",)
     parser.add_argument("--debug", action="store_true", help="Run w/ debug mode")
-    parser.add_argument("--model_save", default=200, type=int, help="Model save start step")
+    parser.add_argument("--model_save", default=300, type=int, help="Model save start step")
 
     parser.add_argument('--data_type', type=str, default="amp+pha")
     parser.add_argument('--source_domains', type=str, default=None)
     parser.add_argument('--target_domains', type=str, default=None)
-    parser.add_argument('--batch_size', type=int, default=12)
+    parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--backbone', type=str, default="CSIResNet")
+    parser.add_argument('--pca', action='store_true')
+    parser.add_argument('--ica', action='store_true')
+    parser.add_argument('--exp_name', type=str, default="")
 
     args = parser.parse_known_args()
+
 
     return args
 
@@ -52,7 +61,7 @@ def main(args,left_argv):
     args.out_dir = Path(args.output_dir )
     args.out_dir.mkdir(exist_ok=True, parents=True)
 
-    logger = Logger.get(args.out_dir / "log.txt")
+    logger = Logger.get(args.out_dir / "logs" / f"log_{args.domain_type}_ori_{args.oris}_rx_{args.rxs}.txt")
     cmd = " ".join(sys.argv)
     logger.info(f"Command :: {cmd}")
 
@@ -113,8 +122,8 @@ def main(args,left_argv):
     ###########################################################################
     
     # for test_env in args.target_domains:
-    if len(args.target_domains)!=1:
-        raise ValueError('wrong')
+    # if len(args.target_domains)!=1:
+    #     raise ValueError('wrong')
     results=train(
         args.target_domains,
         args=args,
@@ -128,7 +137,7 @@ def main(args,left_argv):
 
 
 if __name__ == "__main__":
-    domain_type='user'
+    domain_type='loc'
     '''
     {
         'CSIDA':[
@@ -139,6 +148,7 @@ if __name__ == "__main__":
                 'room_user',
                 'user_loc',
                 'room_user_loc',
+                'indomain'
                 ],
         'Widar3':['loc',
                 'user',
@@ -152,11 +162,30 @@ if __name__ == "__main__":
     imax=500
 
     args,left_argv=get_args()
+    rx_pairs = list(itertools.combinations([1,2,3], 1))  #[1,2,3,4,5,6]
+    rx_pairs =['1','2','3']
+    loc_ids=['1','2','3','4']
+    for loc in loc_ids:
+        for rx_pair in rx_pairs:
+            for ori in ['1-2-3']:  #['2-5','3-5','4-5','2-3','2-4','3-4']   ['1-2-3','2-3-4','3-4-5']
+                # if len(rx_pair)==2:
+                #     args.rxs=f"{rx_pair[0]}+{rx_pair[1]}"
+                # else:
+                #     args.rxs=str(rx_pair[0])
+                args.rxs = rx_pair
+                oris=[ori]
+                locs=[loc]
+                dataset_domain_list=get_domains(args.csidataset,domain_type,ibegin,imax,rxs=[args.rxs],oris=oris,loc_ids=locs)
+                for i in range(len(dataset_domain_list[args.csidataset])):
+                    args.source_domains=dataset_domain_list[args.csidataset][i]['source_domains']
+                    args.target_domains=dataset_domain_list[args.csidataset][i]['target_domains']
+                    ###
+                    args.domain_type=domain_type
+                    args.oris="-".join(oris)
+                    args.locs="-".join(locs)
+                    main(args,left_argv)
 
-    dataset_domain_list=get_domains(args.csidataset,domain_type,ibegin,imax,rxs=None)
-    for i in range(len(dataset_domain_list[args.csidataset])):
-        args.source_domains=dataset_domain_list[args.csidataset][i]['source_domains']
-        args.target_domains=dataset_domain_list[args.csidataset][i]['target_domains']
-
-        main(args,left_argv)
-    
+            if domain_type == "rx":
+                break
+        if domain_type=="loc":
+            break

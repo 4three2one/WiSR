@@ -72,11 +72,15 @@ class ERM(Algorithm):
         return self.network(x)
     
 class WiSR(Algorithm):
-    def __init__(self, input_shape, num_classes, num_domains, hparams):
+    def __init__(self, input_shape, num_classes, num_domains, hparams,backbone):
         super(WiSR, self).__init__(input_shape, num_classes, num_domains, hparams)
         
         print("Building F")
-        self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        if backbone == "ori":
+            self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        else:
+            self.featurizer = networks.OurFeaturizer()
+
         # gesture network
         self.classifier_g = nn.Linear(self.featurizer.n_outputs, num_classes)
         # style network
@@ -88,14 +92,21 @@ class WiSR(Algorithm):
         self.optimizer_g = self.new_optimizer(self.classifier_g.parameters())
         self.optimizer_s = self.new_optimizer(self.classifier_s.parameters())
         self.weight_adv = hparams["w_adv"]
+        self.random_flag = False
 
     def forward_g(self, x):
         # learning gesture network on randomized style
-        return self.classifier_g(self.randomize(self.featurizer(x), "style"))
+        if self.random_flag:
+            return self.classifier_g(self.randomize(self.featurizer(x), "style"))
+        else:
+            return self.classifier_g(self.featurizer(x))
 
     def forward_s(self, x):
         # learning style network on randomized gesture
-        return self.classifier_s(self.randomize(self.featurizer(x), "gesture"))
+        if self.random_flag:
+            return self.classifier_s(self.randomize(self.featurizer(x), "gesture"))
+        else:
+            return self.classifier_s(self.featurizer(x))
 
     def randomize(self, x, what="style", eps=1e-5):#torch.Size([128, 512])
         sizes = x.size()
@@ -103,7 +114,7 @@ class WiSR(Algorithm):
         if len(sizes) == 4:
             x = x.view(sizes[0], sizes[1], -1)
             alpha = alpha.unsqueeze(-1)
-
+        #mean torch.Size([36, 1])
         mean = x.mean(-1, keepdim=True)
         var = x.var(-1, keepdim=True)
 
@@ -132,7 +143,7 @@ class WiSR(Algorithm):
             torch.full((x.shape[0],), i, dtype=torch.int64, device="cuda")
             for i, (x, y) in enumerate(minibatches)
         ])
-
+        # gesture-biased learning: insensitive to domain signals
         # learn gesture feature
         self.optimizer_f.zero_grad()
         self.optimizer_g.zero_grad()
@@ -141,13 +152,14 @@ class WiSR(Algorithm):
         self.optimizer_f.step()
         self.optimizer_g.step()
 
+        # adversarial domain-biased learning: insensitive to  gesture signals
         # learn style
         self.optimizer_s.zero_grad()
         loss_s = F.cross_entropy(self.forward_s(all_x), all_d)
         loss_s.backward()
         self.optimizer_s.step()
 
-        # learn adversary
+        # learn adversary  : enable feature extractor to be away from domain signals
         self.optimizer_f.zero_grad()
         loss_adv = -F.log_softmax(self.forward_s(all_x), dim=1).mean(1).mean()
         loss_adv = loss_adv * self.weight_adv
@@ -161,5 +173,98 @@ class WiSR(Algorithm):
         }
 
     def predict(self, x):
-        return self.classifier_g(self.featurizer(x))  
-    
+        return self.classifier_g(self.featurizer(x))
+
+
+class WiSR_Indomain(Algorithm):
+    def __init__(self, input_shape, num_classes, num_domains, hparams, backbone):
+        super(WiSR_Indomain, self).__init__(input_shape, num_classes, num_domains, hparams)
+
+        print("Building F")
+        if backbone == "ori":
+            self.featurizer = networks.Featurizer(input_shape, self.hparams)
+        else:
+            self.featurizer = networks.OurFeaturizer()
+
+        # gesture network
+        self.classifier_g = nn.Linear(self.featurizer.n_outputs, num_classes)
+        # style network
+        self.classifier_s = nn.Linear(self.featurizer.n_outputs, num_domains)
+        # self.classifier_s = networks.MLP(self.featurizer.n_outputs, num_domains, self.hparams)
+
+        self.optimizer_f = self.new_optimizer(self.featurizer.parameters())
+        self.optimizer_g = self.new_optimizer(self.classifier_g.parameters())
+        self.optimizer_s = self.new_optimizer(self.classifier_s.parameters())
+        self.weight_adv = hparams["w_adv"]
+
+    def forward_g(self, x):
+        # learning gesture network on randomized style
+        return self.classifier_g(self.featurizer(x))
+
+    def forward_s(self, x):
+        # learning style network on randomized gesture
+        return self.classifier_s(self.randomize(self.featurizer(x), "gesture"))
+
+    def randomize(self, x, what="style", eps=1e-5):  # torch.Size([128, 512])
+        sizes = x.size()
+        alpha = torch.rand(sizes[0], 1).cuda()
+        if len(sizes) == 4:
+            x = x.view(sizes[0], sizes[1], -1)
+            alpha = alpha.unsqueeze(-1)
+        # mean torch.Size([36, 1])
+        mean = x.mean(-1, keepdim=True)
+        var = x.var(-1, keepdim=True)
+
+        idx_swap = torch.randperm(sizes[0])
+        if what == "style":
+            mean = alpha * mean + (1 - alpha) * mean[idx_swap]
+            var = alpha * var + (1 - alpha) * var[idx_swap]
+
+            x = (x - mean) / (var + eps).sqrt()
+            x = x * (var + eps).sqrt() + mean
+        else:
+            x = alpha * x + (1 - alpha) * x[idx_swap]
+
+            x = (x - mean) / (var + eps).sqrt()
+            x = x * (var + eps).sqrt() + mean
+
+        return x.view(*sizes)
+
+    def update(self, minibatches, unlabeled=None):
+        all_x = torch.cat([x for x, y in minibatches])
+        all_y = torch.cat([y.long() for x, y in minibatches])
+        all_d = torch.cat([
+            torch.full((x.shape[0],), i, dtype=torch.int64, device="cuda")
+            for i, (x, y) in enumerate(minibatches)
+        ])
+        # gesture-biased learning: insensitive to domain signals
+        # learn gesture feature
+        self.optimizer_f.zero_grad()
+        self.optimizer_g.zero_grad()
+        loss_g = F.cross_entropy(self.forward_g(all_x), all_y)
+        loss_g.backward()
+        self.optimizer_f.step()
+        self.optimizer_g.step()
+
+        # adversarial domain-biased learning: insensitive to  gesture signals
+        # learn style
+        # self.optimizer_s.zero_grad()
+        # loss_s = F.cross_entropy(self.forward_s(all_x), all_d)
+        # loss_s.backward()
+        # self.optimizer_s.step()
+        #
+        # # learn adversary  : enable feature extractor to be away from domain signals
+        # self.optimizer_f.zero_grad()
+        # loss_adv = -F.log_softmax(self.forward_s(all_x), dim=1).mean(1).mean()
+        # loss_adv = loss_adv * self.weight_adv
+        # loss_adv.backward()
+        # self.optimizer_f.step()
+
+        return {
+            "loss_g": loss_g.item(),
+            "loss_s": 0,
+            "loss_adv": 0,
+        }
+
+    def predict(self, x):
+        return self.classifier_g(self.featurizer(x))

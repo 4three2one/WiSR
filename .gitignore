@@ -1,2 +1,4 @@
 .idea
 ./train_output/
+./CSI/data_process/csi_tool_box/
+*.m

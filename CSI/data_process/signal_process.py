@@ -1,4 +1,4 @@
-from scipy import signal,interpolate
+from scipy import interpolate
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -10,14 +10,30 @@ down_cutoff=1
 down_order=3
 fs=2000
 
+from sklearn.decomposition import FastICA
 
 
-def deal_CSI(csi,IFfilter=True,IFphasani=True,padding_length=None,IFinterp=None,interp_length=None,new_length=None,interp1d_kind='quadratic'):
+
+def ica_data(data):
+    [Ntrx, Nsub, packets] = np.shape(data)
+    shape = np.shape(data)
+    new_data = np.zeros(shape)
+    for i in range(Ntrx):
+        ica = FastICA(n_components=Nsub)
+        S = ica.fit_transform(data[i, :, :])
+        X_reconstructed = ica.inverse_transform(S)
+        new_data[i, :, :] = data[i, :, :]-X_reconstructed
+    return new_data
+
+def deal_CSI(csi,args,IFfilter=True,IFphasani=True,padding_length=None,IFinterp=None,interp_length=None,new_length=None,interp1d_kind='quadratic',step_size=4):
     amp=abs(csi)
+
     if IFphasani:
         pha=pha_sanitization(csi[0,:,:], csi[1,:,:], csi[2,:,:])
     else:
         pha=np.angle(csi)
+
+
     
     if padding_length is not None:
         if padding_length>amp.shape[-1]:
@@ -28,12 +44,18 @@ def deal_CSI(csi,IFfilter=True,IFphasani=True,padding_length=None,IFinterp=None,
         else:
             amp=amp[:,:,0:padding_length]
             pha=pha[:,:,0:padding_length]
+
+    if IFinterp:
+        shape_old=amp.shape
+        shape_new=(shape_old[0],shape_old[1],interp_length)
+        amp_new=np.empty(shape_new)
+        pha_new=np.empty(shape_new)
     for i in range(amp.shape[0]):
         if IFinterp:
             if interp_length is None:
                 interp_length=math.ceil(csi.shape[-1]/1000)*1000
-            amp[i,:,:]=data_interp(amp[i,:,:],interp_length,interp1d_kind)
-            pha[i,:,:]=data_interp(pha,interp_length,interp1d_kind)
+            amp_new[i,:,:]=data_interp(amp[i,:,:],interp_length,interp1d_kind)
+            pha_new[i,:,:]=data_interp(pha[i,:,:],interp_length,interp1d_kind)
         
         if IFfilter:
             amp[i,:,:]=butter_lowpass(amp[i,:,:], up_cutoff,up_order,down_cutoff, fs, down_order)
@@ -42,8 +64,18 @@ def deal_CSI(csi,IFfilter=True,IFphasani=True,padding_length=None,IFinterp=None,
             for j in range(amp.shape[1]):
                 amp[i,j,:]=signal.resample(amp[i,j,:],new_length)
                 pha[i,j,:]=signal.resample(pha[i,j,:],new_length)
-        
-    return amp,pha
+
+    if IFinterp:
+        amp=amp_new
+        pha=pha_new
+    if args.pca:
+        amp=pca_data(amp)
+        pha=pca_data(pha)
+
+    if args.ica:
+        pha = ica_data(pha)
+        amp = ica_data(amp)
+    return amp[:,:,::step_size],pha[:,:,::step_size]
 
 pi = np.pi
 
@@ -84,11 +116,11 @@ def pha_sanitization(one_csi, two_csi, three_csi):
 def data_interp(data,new_length,interp1d_kind):
     x=np.linspace(0,1,data.shape[-1])
     xnew=np.linspace(0,1,new_length)
-    data_interp1d=np.empty(data.shape)
+    data_interp1d=np.empty((data.shape[0],xnew.shape[0]))
     for i in range(data.shape[0]):
         f=interpolate.interp1d(x,data[i,:],kind=interp1d_kind)
         data_interp1d[i,:]=f(xnew)
-    print('before packets:',data.shape[-1],'after packets:', new_length)
+    # print('before packets:',data.shape[-1],'after packets:', new_length)
     return data_interp1d
 
 def butter_lowpass(data, up_cutoff,up_order,down_cutoff, fs, down_order):
@@ -118,7 +150,9 @@ def butter_lowpass(data, up_cutoff,up_order,down_cutoff, fs, down_order):
 #PCA
 def pca_data(data):
     [Ntrx, Nsub,packets] = np.shape(data)
-    new_data=np.zeros(np.shape(data))
+    K=10
+    shape=(np.shape(data)[0],K,np.shape(data)[2])
+    new_data=np.zeros(shape)
     for i in range(Ntrx):
         cov_mat=np.cov(data[i,:,:])
         # Calculate eig_val & eig_vec
@@ -128,7 +162,7 @@ def pca_data(data):
         eig_val = eig_val[idx]
         eig_vec = eig_vec[:,idx]
         # Calculate H * eig_vec
-        new_data[i,:,:] = data[i,:,:].T.dot(eig_vec).T           
+        new_data[i,:,:] = data[i,:,:].T.dot(eig_vec)[:,:K].T
     return new_data
 
 
@@ -141,3 +175,9 @@ def sampling(amp_matrix,samples):
             for k in range(samples):
                 amp_sample[i,j,k]=amp_matrix[i,j,tab*k]
     return amp_sample
+
+if __name__ == '__main__':
+    import torch
+    x=torch.tensor(3,30,2500)
+    y=pca_data(x)
+    pass

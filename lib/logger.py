@@ -66,7 +66,7 @@ class Logger(logging.Logger):
 
         if file_path:
             # file output handler
-            file_handler = logging.FileHandler(file_path)
+            file_handler = logging.FileHandler(file_path,encoding="utf-8")
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
 
